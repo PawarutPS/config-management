@@ -1,0 +1,11 @@
+[env.dev]
+aws_profile = "dev-profile"
+region = "ap-southeast-1"
+
+[env.uat]
+aws_profile = "uat-profile"
+region = "ap-southeast-1"
+
+[env.prod]
+aws_profile = "prod-profile"
+region = "ap-southeast-1"

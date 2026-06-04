@@ -1,0 +1,46 @@
+pipeline {
+  agent any
+
+  environment {
+    DEPLOY_ENV = 'dev'
+    ENV_CONFIG = 'examples/env_config.toml'
+    CHANGED_BASE = 'origin/main'
+    CHANGED_HEAD = 'HEAD'
+    BACKUP_S3_BUCKET = 'replace-with-config-backup-bucket'
+    BACKUP_S3_PREFIX = 'dynamodb-config-backup'
+  }
+
+  stages {
+    stage('Install') {
+      steps {
+        sh 'python3 -m pip install -r requirements.txt'
+        sh 'python3 -m pip install -e .'
+      }
+    }
+
+    stage('Generate CLI') {
+      steps {
+        script {
+          env.DEPLOY_CMD = """
+            dynamodb-config-manager \
+              --env ${DEPLOY_ENV} \
+              --env-config ${ENV_CONFIG} \
+              --scope changed \
+              --changed-base ${CHANGED_BASE} \
+              --changed-head ${CHANGED_HEAD} \
+              --no-dry-run \
+              --backup-s3-bucket ${BACKUP_S3_BUCKET} \
+              --backup-s3-prefix ${BACKUP_S3_PREFIX}
+          """.trim()
+        }
+        sh 'echo "$DEPLOY_CMD"'
+      }
+    }
+
+    stage('Deploy Changed CSV') {
+      steps {
+        sh '$DEPLOY_CMD'
+      }
+    }
+  }
+}

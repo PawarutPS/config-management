@@ -2,6 +2,18 @@
 
 Python repository for managing DynamoDB config data from CSV files with Git as the source of truth.
 
+The target workflow is simple:
+
+```text
+User uploads or edits CSV
+  -> Merge Request review
+  -> Merge
+  -> Jenkins detects changed CSV files
+  -> Jenkins uploads changed config into DynamoDB
+```
+
+Users do not create deployment scripts and do not enter table parameters manually. Jenkins deploys the changed CSV files.
+
 ## Repository Layout
 
 ```text
@@ -45,29 +57,17 @@ Before writing to DynamoDB, key prefixes are removed:
 }
 ```
 
-## Table Names
+## Table Name Rule
 
-`table_name` is always explicit. The tool never derives the table name from the CSV file path.
+For the Jenkins changed-file workflow, table name comes from the CSV file name.
 
-For `--scope file`, pass `--table-name`:
+Example:
 
-```bash
-dynamodb-config-manager \
-  --env dev \
-  --scope file \
-  --path config/cde/dpf_config_sample.csv \
-  --table-name dpf_config_sample \
-  --dry-run
+```text
+config/cde/loc/dpf_config_location.csv -> dpf_config_location
 ```
 
-For `--scope all`, `--scope folder`, or `--scope changed`, pass a TOML table map:
-
-```toml
-[tables]
-"config/cde/loc/dpf_config_location.csv" = "dpf_config_location"
-```
-
-The explicit table name must match `Path(filepath).stem`; otherwise the process stops.
+This means users only need to upload or edit CSV files in the correct folder.
 
 ## Environment Mapping
 
@@ -91,67 +91,52 @@ region = "ap-southeast-1"
 
 Supported environments are `dev`, `uat`, and `prod`.
 
-## Deploy Modes
+## Jenkins Deployment
 
-Dry run is the default:
+Jenkins should run changed-file deployment after merge.
 
-```bash
-dynamodb-config-manager --env dev --scope file --path config/cde/dpf_config_sample.csv --table-name dpf_config_sample
-```
-
-Dry run performs validation, checks whether the DynamoDB table exists, and previews rows. It does not create tables, clear data, or upsert data.
-
-Deploy mode uses `--no-dry-run`:
+Dry run validation:
 
 ```bash
 dynamodb-config-manager \
   --env dev \
-  --scope file \
-  --path config/cde/dpf_config_sample.csv \
-  --table-name dpf_config_sample \
-  --no-dry-run
+  --env-config examples/env_config.toml \
+  --scope changed \
+  --changed-base origin/main \
+  --changed-head HEAD
 ```
 
-If a table does not exist, the tool creates it using string keys from `pk__` and optional `sk__` columns. The default billing mode is `PAY_PER_REQUEST`; override with `--billing-mode` when needed.
-
-## Python Update Files
-
-User-managed deploy files can be created under `deployments/`. Each file should call `deploy_config_file()` with a Pydantic request model.
-
-Example: `deployments/update_config_a.py`
-
-```python
-from pathlib import Path
-
-from dynamodb_config_manager.deployment import deploy_config_file
-from dynamodb_config_manager.models import DeployConfigFileRequest
-
-
-summary = deploy_config_file(
-    DeployConfigFileRequest(
-        env="dev",
-        file_path=Path("config/cde/dpf_config_sample.csv"),
-        table_name="dpf_config_sample",
-        dry_run=True,
-        clean_data_from_table=False,
-        env_config_path=Path("examples/env_config.toml"),
-    )
-)
-print(summary.model_dump_json(indent=2))
-```
-
-Set `clean_data_from_table=True` when the table must be cleared before upsert. The helper automatically sends the required clear confirmation for that file-level deployment.
-
-## Clear Table
-
-Clearing a table is guarded by two flags:
+Actual deploy with S3 backup:
 
 ```bash
 dynamodb-config-manager \
   --env dev \
-  --scope file \
-  --path config/cde/dpf_config_sample.csv \
-  --table-name dpf_config_sample \
+  --env-config examples/env_config.toml \
+  --scope changed \
+  --changed-base origin/main \
+  --changed-head HEAD \
+  --no-dry-run \
+  --backup-s3-bucket my-config-backup-bucket \
+  --backup-s3-prefix dynamodb-config-backup
+```
+
+Dry run validates files, checks whether each DynamoDB table exists, and previews rows. It does not create tables, clear data, upsert data, or upload S3 backups.
+
+Deploy mode creates a missing table using string keys from `pk__` and optional `sk__`, upserts data, then uploads each successfully deployed CSV to S3. The backup object key is `<backup-s3-prefix>/<env>/<relative csv path>`.
+
+A Jenkins pipeline example is available at `examples/Jenkinsfile`. It generates the CLI command, prints it for audit, then executes it.
+
+## Optional Clear Table
+
+Clearing a table is disabled by default. If a pipeline needs to clear existing data before upsert, both flags are required:
+
+```bash
+dynamodb-config-manager \
+  --env dev \
+  --env-config examples/env_config.toml \
+  --scope changed \
+  --changed-base origin/main \
+  --changed-head HEAD \
   --no-dry-run \
   --clear-table \
   --confirm-clear
@@ -159,20 +144,19 @@ dynamodb-config-manager \
 
 If `--clear-table` is set without `--confirm-clear`, the tool raises an error before any DynamoDB write.
 
-## Deploy Scopes
+## Manual Commands
+
+Manual commands are still available for local validation or troubleshooting.
 
 ```bash
-# All CSV files under config/
-dynamodb-config-manager --env dev --scope all --table-map examples/table_map.toml
+# Validate and preview one file
+dynamodb-config-manager --env dev --scope file --path config/cde/dpf_config_sample.csv
 
-# One CSV file
-dynamodb-config-manager --env dev --scope file --path config/cde/dpf_config_sample.csv --table-name dpf_config_sample
+# Validate and preview all CSV files
+dynamodb-config-manager --env dev --scope all
 
-# One folder
-dynamodb-config-manager --env dev --scope folder --path config/cde --table-map examples/table_map.toml
-
-# Changed CSV files for CI/CD
-dynamodb-config-manager --env dev --scope changed --changed-base origin/main --changed-head HEAD --table-map examples/table_map.toml
+# Validate and preview one folder
+dynamodb-config-manager --env dev --scope folder --path config/cde
 ```
 
 ## Logging
@@ -186,6 +170,6 @@ ENV FILEPATH FILE_NAME TABLE_NAME PARTITION_KEY SORT_KEY COLUMN_LIST RECORD_COUN
 ## Local Development
 
 ```bash
-python -m pip install -e ".[dev]"
-pytest
+python3 -m pip install -e ".[dev]"
+python3 -m pytest
 ```

@@ -27,6 +27,7 @@ class DynamoDBConfigClient:
 
         self.resource = session.resource("dynamodb", **resource_kwargs)
         self.client = session.client("dynamodb", **resource_kwargs)
+        self.s3_client = session.client("s3", **resource_kwargs)
 
     def table_exists(self, table_name: str) -> bool:
         try:
@@ -98,3 +99,7 @@ class DynamoDBConfigClient:
                 batch.put_item(Item=item)
                 upserted += 1
         return upserted
+
+    def upload_file_to_s3(self, filepath: str, bucket: str, key: str) -> str:
+        self.s3_client.upload_file(filepath, bucket, key)
+        return f"s3://{bucket}/{key}"

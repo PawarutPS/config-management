@@ -14,6 +14,7 @@ class FakeDynamoDBClient:
         self.created_tables: list[tuple[str, KeySchema, str]] = []
         self.cleared_tables: list[str] = []
         self.upserted_items: list[tuple[str, list[dict[str, object]]]] = []
+        self.uploaded_files: list[tuple[str, str, str]] = []
 
     def table_exists(self, table_name: str) -> bool:
         return self._table_exists
@@ -31,6 +32,10 @@ class FakeDynamoDBClient:
         item_list = list(items)
         self.upserted_items.append((table_name, item_list))
         return len(item_list)
+
+    def upload_file_to_s3(self, filepath: str, bucket: str, key: str) -> str:
+        self.uploaded_files.append((filepath, bucket, key))
+        return f"s3://{bucket}/{key}"
 
 
 def write_repo_csv(repo_root: Path) -> None:
@@ -100,16 +105,18 @@ def test_clear_table_requires_confirmation(tmp_path: Path) -> None:
         )
 
 
-def test_all_scope_requires_table_map(tmp_path: Path) -> None:
+def test_all_scope_uses_file_stem_as_table_name(tmp_path: Path) -> None:
     write_repo_csv(tmp_path)
     fake_client = FakeDynamoDBClient()
     processor = ConfigProcessor(tmp_path, fake_client)
 
-    with pytest.raises(ValidationError, match="table name is required"):
-        processor.deploy(env="dev", scope="all", dry_run=True)
+    summary = processor.deploy(env="dev", scope="all", dry_run=True)
+
+    assert summary.status == "DRY_RUN"
+    assert summary.results[0].table_name == "dpf_config_sample"
 
 
-def test_all_scope_uses_table_map(tmp_path: Path) -> None:
+def test_all_scope_can_override_table_name_with_table_map(tmp_path: Path) -> None:
     write_repo_csv(tmp_path)
     fake_client = FakeDynamoDBClient()
     processor = ConfigProcessor(
@@ -122,3 +129,64 @@ def test_all_scope_uses_table_map(tmp_path: Path) -> None:
 
     assert summary.status == "DRY_RUN"
     assert summary.results[0].table_name == "dpf_config_sample"
+
+
+def test_file_scope_uses_file_stem_when_table_name_is_not_provided(tmp_path: Path) -> None:
+    write_repo_csv(tmp_path)
+    fake_client = FakeDynamoDBClient()
+    processor = ConfigProcessor(tmp_path, fake_client)
+
+    summary = processor.deploy(
+        env="dev",
+        scope="file",
+        path=Path("config/cde/dpf_config_sample.csv"),
+        dry_run=True,
+    )
+
+    assert summary.status == "DRY_RUN"
+    assert summary.results[0].table_name == "dpf_config_sample"
+
+
+def test_deploy_uploads_changed_csv_to_s3_backup(tmp_path: Path) -> None:
+    write_repo_csv(tmp_path)
+    fake_client = FakeDynamoDBClient(table_exists=True)
+    processor = ConfigProcessor(tmp_path, fake_client)
+
+    summary = processor.deploy(
+        env="dev",
+        scope="file",
+        path=Path("config/cde/dpf_config_sample.csv"),
+        dry_run=False,
+        backup_s3_bucket="config-backup-bucket",
+        backup_s3_prefix="dynamodb-config-backup",
+    )
+
+    assert summary.status == "SUCCESS"
+    assert summary.results[0].backup_s3_uri == (
+        "s3://config-backup-bucket/dynamodb-config-backup/dev/config/cde/dpf_config_sample.csv"
+    )
+    assert fake_client.uploaded_files == [
+        (
+            str(tmp_path / "config/cde/dpf_config_sample.csv"),
+            "config-backup-bucket",
+            "dynamodb-config-backup/dev/config/cde/dpf_config_sample.csv",
+        )
+    ]
+
+
+def test_dry_run_does_not_upload_s3_backup(tmp_path: Path) -> None:
+    write_repo_csv(tmp_path)
+    fake_client = FakeDynamoDBClient(table_exists=True)
+    processor = ConfigProcessor(tmp_path, fake_client)
+
+    summary = processor.deploy(
+        env="dev",
+        scope="file",
+        path=Path("config/cde/dpf_config_sample.csv"),
+        dry_run=True,
+        backup_s3_bucket="config-backup-bucket",
+        backup_s3_prefix="dynamodb-config-backup",
+    )
+
+    assert summary.status == "DRY_RUN"
+    assert fake_client.uploaded_files == []

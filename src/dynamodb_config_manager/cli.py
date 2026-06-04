@@ -37,6 +37,8 @@ def main(argv: list[str] | None = None) -> int:
             changed_base=args.changed_base,
             changed_head=args.changed_head,
             billing_mode=args.billing_mode,
+            backup_s3_bucket=args.backup_s3_bucket,
+            backup_s3_prefix=args.backup_s3_prefix,
         )
         print_summary(summary)
         return 1 if summary.status == "FAILED" else 0
@@ -66,6 +68,8 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--changed-base")
     parser.add_argument("--changed-head", default="HEAD")
     parser.add_argument("--billing-mode", default="PAY_PER_REQUEST")
+    parser.add_argument("--backup-s3-bucket")
+    parser.add_argument("--backup-s3-prefix", default="")
     return parser
 
 
@@ -75,6 +79,7 @@ def print_summary(summary: DeploymentSummary) -> None:
     rows_read = sum(result.record_count for result in summary.results)
     rows_upserted = sum(result.rows_upserted for result in summary.results)
     rows_failed = sum(result.rows_failed for result in summary.results)
+    backup_uris = [result.backup_s3_uri for result in summary.results if result.backup_s3_uri]
 
     print(f"Environment : {summary.env}")
     print()
@@ -95,6 +100,12 @@ def print_summary(summary: DeploymentSummary) -> None:
     print("Rows Failed")
     print(f"- {rows_failed}")
     print()
+    if backup_uris:
+        print()
+        print("S3 Backup")
+        for backup_uri in backup_uris:
+            print(f"- {backup_uri}")
+
     print("Status")
     print(f"- {summary.status}")
 

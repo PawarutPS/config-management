@@ -67,6 +67,7 @@ class FileDeploymentResult(ConfigBaseModel):
     status: Status = "SUCCESS"
     error_detail: str | None = None
     table_existed: bool | None = None
+    backup_s3_uri: str | None = None
     preview_rows: list[dict[str, Any]] = Field(default_factory=list)
 
     @property
@@ -85,17 +86,6 @@ class DeploymentSummary(ConfigBaseModel):
         if all(result.status == "DRY_RUN" for result in self.results):
             return "DRY_RUN"
         return "SUCCESS"
-
-
-class DeployConfigFileRequest(ConfigBaseModel):
-    env: Environment
-    file_path: Path
-    table_name: str
-    dry_run: bool = True
-    clean_data_from_table: bool = False
-    env_config_path: Path | None = None
-    repo_root: Path = Field(default_factory=Path.cwd)
-    billing_mode: str = "PAY_PER_REQUEST"
 
 
 def _renamed_headers(headers: list[str]) -> list[str]:

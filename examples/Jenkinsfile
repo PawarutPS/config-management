@@ -22,7 +22,7 @@ pipeline {
       steps {
         script {
           env.DEPLOY_CMD = """
-            dynamodb-config-manager \
+            dynamodb-config-manager deploy \
               --env ${DEPLOY_ENV} \
               --env-config ${ENV_CONFIG} \
               --scope changed \

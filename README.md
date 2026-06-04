@@ -2,6 +2,8 @@
 
 Python repository for managing DynamoDB config data from CSV files with Git as the source of truth.
 
+The command-line interface is implemented with Typer. The main command is `dynamodb-config-manager deploy`.
+
 The target workflow is simple:
 
 ```text
@@ -98,7 +100,7 @@ Jenkins should run changed-file deployment after merge.
 Dry run validation:
 
 ```bash
-dynamodb-config-manager \
+dynamodb-config-manager deploy \
   --env dev \
   --env-config examples/env_config.toml \
   --scope changed \
@@ -109,7 +111,7 @@ dynamodb-config-manager \
 Actual deploy with S3 backup:
 
 ```bash
-dynamodb-config-manager \
+dynamodb-config-manager deploy \
   --env dev \
   --env-config examples/env_config.toml \
   --scope changed \
@@ -131,7 +133,7 @@ A Jenkins pipeline example is available at `examples/Jenkinsfile`. It generates 
 Clearing a table is disabled by default. If a pipeline needs to clear existing data before upsert, both flags are required:
 
 ```bash
-dynamodb-config-manager \
+dynamodb-config-manager deploy \
   --env dev \
   --env-config examples/env_config.toml \
   --scope changed \
@@ -150,13 +152,13 @@ Manual commands are still available for local validation or troubleshooting.
 
 ```bash
 # Validate and preview one file
-dynamodb-config-manager --env dev --scope file --path config/cde/dpf_config_sample.csv
+dynamodb-config-manager deploy --env dev --scope file --path config/cde/dpf_config_sample.csv
 
 # Validate and preview all CSV files
-dynamodb-config-manager --env dev --scope all
+dynamodb-config-manager deploy --env dev --scope all
 
 # Validate and preview one folder
-dynamodb-config-manager --env dev --scope folder --path config/cde
+dynamodb-config-manager deploy --env dev --scope folder --path config/cde
 ```
 
 ## Logging

@@ -163,13 +163,13 @@ def test_deploy_uploads_changed_csv_to_s3_backup(tmp_path: Path) -> None:
 
     assert summary.status == "SUCCESS"
     assert summary.results[0].backup_s3_uri == (
-        "s3://config-backup-bucket/dynamodb-config-backup/dev/config/cde/dpf_config_sample.csv"
+        "s3://config-backup-bucket/dynamodb-config-backup/config/cde/dpf_config_sample.csv"
     )
     assert fake_client.uploaded_files == [
         (
             str(tmp_path / "config/cde/dpf_config_sample.csv"),
             "config-backup-bucket",
-            "dynamodb-config-backup/dev/config/cde/dpf_config_sample.csv",
+            "dynamodb-config-backup/config/cde/dpf_config_sample.csv",
         )
     ]
 

@@ -19,6 +19,12 @@ class DynamoDBConfigClient:
             session_kwargs["profile_name"] = env_config.aws_profile
         if env_config.region:
             session_kwargs["region_name"] = env_config.region
+        if env_config.aws_access_key_id:
+            session_kwargs["aws_access_key_id"] = env_config.aws_access_key_id
+        if env_config.aws_secret_access_key:
+            session_kwargs["aws_secret_access_key"] = env_config.aws_secret_access_key
+        if env_config.aws_session_token:
+            session_kwargs["aws_session_token"] = env_config.aws_session_token
 
         session = boto3.Session(**session_kwargs)
         resource_kwargs: dict[str, str] = {}

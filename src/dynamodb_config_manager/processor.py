@@ -32,8 +32,8 @@ class ConfigProcessor:
 
     def deploy(
         self,
-        env: Environment,
         scope: Scope,
+        env: Environment = "default",
         path: Path | None = None,
         table_name: str | None = None,
         dry_run: bool = True,
@@ -183,9 +183,7 @@ class ConfigProcessor:
                 config_file.table_name, config_file.rows
             )
             if backup_s3_bucket:
-                backup_key = self._backup_s3_key(
-                    env, config_file.relative_path, backup_s3_prefix
-                )
+                backup_key = self._backup_s3_key(config_file.relative_path, backup_s3_prefix)
                 result.backup_s3_uri = self.dynamodb_client.upload_file_to_s3(
                     str(config_file.path), backup_s3_bucket, backup_key
                 )
@@ -219,7 +217,7 @@ class ConfigProcessor:
             result.backup_s3_uri,
         )
 
-    def _backup_s3_key(self, env: Environment, relative_path: Path, prefix: str) -> str:
+    def _backup_s3_key(self, relative_path: Path, prefix: str) -> str:
         normalized_prefix = prefix.strip("/")
-        key_parts = [part for part in [normalized_prefix, env, relative_path.as_posix()] if part]
+        key_parts = [part for part in [normalized_prefix, relative_path.as_posix()] if part]
         return "/".join(key_parts)

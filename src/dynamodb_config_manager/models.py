@@ -6,7 +6,7 @@ from typing import Any, Literal
 from pydantic import BaseModel, ConfigDict, Field
 
 
-Environment = Literal["dev", "uat", "prod"]
+Environment = str
 Scope = Literal["all", "file", "folder", "changed"]
 Status = Literal["SUCCESS", "FAILED", "DRY_RUN"]
 

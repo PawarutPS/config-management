@@ -2,7 +2,9 @@
 
 Python repository for managing DynamoDB config data from CSV files with Git as the source of truth.
 
-The command-line interface is implemented with Typer. The main command is `dynamodb-config-manager deploy`.
+The command-line interface is implemented with Typer. The main command is `dynamodb-config-manager deploy`, and Typer validates input types from the function signature.
+
+Jenkins jobs are separated by environment, so the CLI does not require `--env`. AWS credentials should come from Jenkins AK/SK credentials or standard AWS environment variables.
 
 The target workflow is simple:
 
@@ -73,25 +75,18 @@ This means users only need to upload or edit CSV files in the correct folder.
 
 ## Environment Mapping
 
-Environment-to-AWS mapping is externalized. No AWS account, profile, endpoint, or region is hardcoded.
+AWS credentials are externalized. No AWS account, access key, secret key, profile, endpoint, or region is hardcoded.
 
-Use `--env-config` or set `DCM_ENV_CONFIG`:
+Preferred Jenkins setup uses standard AWS environment variables:
 
-```toml
-[env.dev]
-aws_profile = "my-dev-profile"
-region = "ap-southeast-1"
-
-[env.uat]
-aws_profile = "my-uat-profile"
-region = "ap-southeast-1"
-
-[env.prod]
-aws_profile = "my-prod-profile"
-region = "ap-southeast-1"
+```text
+AWS_ACCESS_KEY_ID
+AWS_SECRET_ACCESS_KEY
+AWS_SESSION_TOKEN optional
+AWS_DEFAULT_REGION
 ```
 
-Supported environments are `dev`, `uat`, and `prod`.
+For Jenkins, configure AK/SK with Jenkins credentials and set region with `AWS_DEFAULT_REGION`. The CLI does not require `--env` or `--env-config` when each Jenkins job already maps to one environment.
 
 ## Jenkins Deployment
 
@@ -101,8 +96,6 @@ Dry run validation:
 
 ```bash
 dynamodb-config-manager deploy \
-  --env dev \
-  --env-config examples/env_config.toml \
   --scope changed \
   --changed-base origin/main \
   --changed-head HEAD
@@ -112,8 +105,6 @@ Actual deploy with S3 backup:
 
 ```bash
 dynamodb-config-manager deploy \
-  --env dev \
-  --env-config examples/env_config.toml \
   --scope changed \
   --changed-base origin/main \
   --changed-head HEAD \
@@ -124,7 +115,7 @@ dynamodb-config-manager deploy \
 
 Dry run validates files, checks whether each DynamoDB table exists, and previews rows. It does not create tables, clear data, upsert data, or upload S3 backups.
 
-Deploy mode creates a missing table using string keys from `pk__` and optional `sk__`, upserts data, then uploads each successfully deployed CSV to S3. The backup object key is `<backup-s3-prefix>/<env>/<relative csv path>`.
+Deploy mode creates a missing table using string keys from `pk__` and optional `sk__`, upserts data, then uploads each successfully deployed CSV to S3. The backup object key is `<backup-s3-prefix>/<relative csv path>`.
 
 A Jenkins pipeline example is available at `examples/Jenkinsfile`. It generates the CLI command, prints it for audit, then executes it.
 
@@ -134,8 +125,6 @@ Clearing a table is disabled by default. If a pipeline needs to clear existing d
 
 ```bash
 dynamodb-config-manager deploy \
-  --env dev \
-  --env-config examples/env_config.toml \
   --scope changed \
   --changed-base origin/main \
   --changed-head HEAD \
@@ -152,13 +141,13 @@ Manual commands are still available for local validation or troubleshooting.
 
 ```bash
 # Validate and preview one file
-dynamodb-config-manager deploy --env dev --scope file --path config/cde/dpf_config_sample.csv
+dynamodb-config-manager deploy --scope file --path config/cde/dpf_config_sample.csv
 
 # Validate and preview all CSV files
-dynamodb-config-manager deploy --env dev --scope all
+dynamodb-config-manager deploy --scope all
 
 # Validate and preview one folder
-dynamodb-config-manager deploy --env dev --scope folder --path config/cde
+dynamodb-config-manager deploy --scope folder --path config/cde
 ```
 
 ## Logging

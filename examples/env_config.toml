@@ -1,11 +1,7 @@
-[env.dev]
-aws_profile = "dev-profile"
+[aws]
 region = "ap-southeast-1"
 
-[env.uat]
-aws_profile = "uat-profile"
-region = "ap-southeast-1"
-
-[env.prod]
-aws_profile = "prod-profile"
-region = "ap-southeast-1"
+# Jenkins should provide AK/SK through credentials instead of committing them here:
+# AWS_ACCESS_KEY_ID
+# AWS_SECRET_ACCESS_KEY
+# AWS_SESSION_TOKEN optional

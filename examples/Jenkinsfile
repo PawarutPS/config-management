@@ -1,16 +1,46 @@
+@Library('pipeline-utils@main') _
+
+def environments = [
+  develop: [
+    aws_region: 'ap-southeast-1',
+    aws_creds_id: 'aws-sit-creds',
+    backup_s3_bucket: 'replace-with-sit-config-backup-bucket',
+    backup_s3_prefix: 'dynamodb-config-backup'
+  ],
+  release: [
+    aws_region: 'ap-southeast-7',
+    aws_creds_id: 'aws-uat-creds',
+    backup_s3_bucket: 'replace-with-uat-config-backup-bucket',
+    backup_s3_prefix: 'dynamodb-config-backup'
+  ],
+  main: [
+    aws_region: 'ap-southeast-7',
+    aws_creds_id: 'aws-prd-creds',
+    backup_s3_bucket: 'replace-with-prd-config-backup-bucket',
+    backup_s3_prefix: 'dynamodb-config-backup'
+  ]
+]
+
 pipeline {
   agent any
 
   environment {
-    DEPLOY_ENV = 'dev'
-    ENV_CONFIG = 'examples/env_config.toml'
     CHANGED_BASE = 'origin/main'
     CHANGED_HEAD = 'HEAD'
-    BACKUP_S3_BUCKET = 'replace-with-config-backup-bucket'
-    BACKUP_S3_PREFIX = 'dynamodb-config-backup'
   }
 
   stages {
+    stage('Resolve Environment') {
+      steps {
+        script {
+          config = environments[env.BRANCH_NAME]
+          if (config == null) {
+            error "Unsupported branch for deploy: ${env.BRANCH_NAME}"
+          }
+        }
+      }
+    }
+
     stage('Install') {
       steps {
         sh 'python3 -m pip install -r requirements.txt'
@@ -23,23 +53,25 @@ pipeline {
         script {
           env.DEPLOY_CMD = """
             dynamodb-config-manager deploy \
-              --env ${DEPLOY_ENV} \
-              --env-config ${ENV_CONFIG} \
               --scope changed \
               --changed-base ${CHANGED_BASE} \
               --changed-head ${CHANGED_HEAD} \
               --no-dry-run \
-              --backup-s3-bucket ${BACKUP_S3_BUCKET} \
-              --backup-s3-prefix ${BACKUP_S3_PREFIX}
+              --backup-s3-bucket ${config.backup_s3_bucket} \
+              --backup-s3-prefix ${config.backup_s3_prefix}
           """.trim()
+          print env.DEPLOY_CMD
         }
-        sh 'echo "$DEPLOY_CMD"'
       }
     }
 
     stage('Deploy Changed CSV') {
       steps {
-        sh '$DEPLOY_CMD'
+        script {
+          withAWS(region: config.aws_region, credentials: config.aws_creds_id) {
+            sh '$DEPLOY_CMD'
+          }
+        }
       }
     }
   }

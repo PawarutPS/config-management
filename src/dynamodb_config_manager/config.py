@@ -11,17 +11,23 @@ from .models import Environment, ValidationError
 
 @dataclass(frozen=True)
 class AwsEnvironmentConfig:
-    env: Environment
+    env: Environment = "default"
     region: str | None = None
     aws_profile: str | None = None
     endpoint_url: str | None = None
     account_id: str | None = None
+    aws_access_key_id: str | None = None
+    aws_secret_access_key: str | None = None
+    aws_session_token: str | None = None
 
 
-def load_env_config(env: Environment, config_path: Path | None) -> AwsEnvironmentConfig:
+def load_env_config(
+    env: Environment | None = None, config_path: Path | None = None
+) -> AwsEnvironmentConfig:
+    env_name = env or "default"
     path = config_path or _config_path_from_env()
     if path is None:
-        return AwsEnvironmentConfig(env=env)
+        return AwsEnvironmentConfig(env=env_name)
 
     if not path.exists():
         raise ValidationError(f"environment config file does not exist: {path}")
@@ -29,16 +35,24 @@ def load_env_config(env: Environment, config_path: Path | None) -> AwsEnvironmen
     with path.open("rb") as config_file:
         data = tomllib.load(config_file)
 
-    env_data = data.get("env", {}).get(env)
-    if not isinstance(env_data, dict):
-        raise ValidationError(f"environment mapping is missing for env: {env}")
+    if env:
+        env_data = data.get("env", {}).get(env)
+        if not isinstance(env_data, dict):
+            raise ValidationError(f"environment mapping is missing for env: {env}")
+    else:
+        env_data = data.get("aws", data)
+        if not isinstance(env_data, dict):
+            raise ValidationError("environment config must contain AWS settings")
 
     return AwsEnvironmentConfig(
-        env=env,
+        env=env_name,
         region=_optional_str(env_data, "region"),
         aws_profile=_optional_str(env_data, "aws_profile"),
         endpoint_url=_optional_str(env_data, "endpoint_url"),
         account_id=_optional_str(env_data, "account_id"),
+        aws_access_key_id=_optional_str(env_data, "aws_access_key_id"),
+        aws_secret_access_key=_optional_str(env_data, "aws_secret_access_key"),
+        aws_session_token=_optional_str(env_data, "aws_session_token"),
     )
 
 

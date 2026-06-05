@@ -25,9 +25,10 @@ config/
 ├── cde/
 ├── scf/
 └── def/
-src/dynamodb_config_manager/
+dynamodb_config_manager/
 tests/
 examples/
+Jenkinsfile
 ```
 
 Only `config/cde`, `config/scf`, and `config/def` are valid root folders. Any other folder directly under `config/` raises an error.
@@ -117,7 +118,7 @@ Dry run validates files, checks whether each DynamoDB table exists, and previews
 
 Deploy mode creates a missing table using string keys from `pk__` and optional `sk__`, upserts data, then uploads each successfully deployed CSV to S3. The backup object key is `<backup-s3-prefix>/<relative csv path>`.
 
-A Jenkins pipeline example is available at `examples/Jenkinsfile`. It generates the CLI command, prints it for audit, then executes it.
+A Jenkins pipeline example is available at `Jenkinsfile`. It generates the CLI command, prints it for audit, then executes it.
 
 ## Optional Clear Table
 

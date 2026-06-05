@@ -23,8 +23,9 @@ dev = [
 dynamodb-config-manager = "dynamodb_config_manager.cli:main"
 
 [tool.setuptools.packages.find]
-where = ["src"]
+where = ["."]
+include = ["dynamodb_config_manager*"]
 
 [tool.pytest.ini_options]
-pythonpath = ["src"]
+pythonpath = ["."]
 testpaths = ["tests"]

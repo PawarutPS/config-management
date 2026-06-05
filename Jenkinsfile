@@ -25,7 +25,12 @@ pipeline {
   agent any
 
   environment {
-    CHANGED_BASE = 'origin/main'
+    IMAGE_TAG = "${env.GIT_COMMIT.substring(0, 7)}"
+    REPOSITORY = "xxx/xxx"
+    PROJECT_DIR = "xxx"
+    TEAMS_WEBHOOK_URL = credentials('workflow-webhook-url')
+    DEPLOY_ENV = "${env.BRANCH_NAME == 'main' ? 'production' : (env.BRANCH_NAME == 'release' ? 'uat' : 'dev')}"
+    CHANGED_BASE = "${env.GIT_PREVIOUS_SUCCESSFUL_COMMIT ?: 'HEAD~1'}"
     CHANGED_HEAD = 'HEAD'
   }
 

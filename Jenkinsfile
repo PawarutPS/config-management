@@ -57,11 +57,15 @@ pipeline {
       steps {
         script {
           env.DEPLOY_CMD = """
-            dynamodb-config-manager deploy \
+            python3 dynamodb_config_manager/cli.py \
               --scope changed \
               --changed-base ${CHANGED_BASE} \
               --changed-head ${CHANGED_HEAD} \
               --no-dry-run \
+              --clear-table \
+              --confirm-clear \
+              --delete-removed-tables \
+              --confirm-delete-tables \
               --backup-s3-bucket ${config.backup_s3_bucket} \
               --backup-s3-prefix ${config.backup_s3_prefix}
           """.trim()

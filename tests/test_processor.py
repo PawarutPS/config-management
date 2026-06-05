@@ -15,6 +15,7 @@ class FakeDynamoDBClient:
         self.cleared_tables: list[str] = []
         self.upserted_items: list[tuple[str, list[dict[str, object]]]] = []
         self.uploaded_files: list[tuple[str, str, str]] = []
+        self.deleted_tables: list[str] = []
 
     def table_exists(self, table_name: str) -> bool:
         return self._table_exists
@@ -36,6 +37,9 @@ class FakeDynamoDBClient:
     def upload_file_to_s3(self, filepath: str, bucket: str, key: str) -> str:
         self.uploaded_files.append((filepath, bucket, key))
         return f"s3://{bucket}/{key}"
+
+    def delete_table(self, table_name: str) -> None:
+        self.deleted_tables.append(table_name)
 
 
 def write_repo_csv(repo_root: Path) -> None:
@@ -190,3 +194,46 @@ def test_dry_run_does_not_upload_s3_backup(tmp_path: Path) -> None:
 
     assert summary.status == "DRY_RUN"
     assert fake_client.uploaded_files == []
+
+
+def test_delete_removed_tables_requires_confirmation(tmp_path: Path) -> None:
+    write_repo_csv(tmp_path)
+    fake_client = FakeDynamoDBClient()
+    processor = ConfigProcessor(tmp_path, fake_client)
+
+    with pytest.raises(ValidationError, match="confirm_delete_tables"):
+        processor.deploy(
+            env="dev",
+            scope="changed",
+            dry_run=False,
+            delete_removed_tables=True,
+            confirm_delete_tables=False,
+        )
+
+
+def test_delete_removed_table_deletes_existing_table(tmp_path: Path) -> None:
+    write_repo_csv(tmp_path)
+    fake_client = FakeDynamoDBClient(table_exists=True)
+    processor = ConfigProcessor(tmp_path, fake_client)
+
+    result = processor._delete_removed_table(
+        env="dev", filepath=Path("config/cde/cat_table.csv"), dry_run=False
+    )
+
+    assert result.status == "DELETED"
+    assert result.table_deleted is True
+    assert result.table_name == "cat_table"
+    assert fake_client.deleted_tables == ["cat_table"]
+
+
+def test_delete_removed_table_dry_run_does_not_delete(tmp_path: Path) -> None:
+    write_repo_csv(tmp_path)
+    fake_client = FakeDynamoDBClient(table_exists=True)
+    processor = ConfigProcessor(tmp_path, fake_client)
+
+    result = processor._delete_removed_table(
+        env="dev", filepath=Path("config/cde/cat_table.csv"), dry_run=True
+    )
+
+    assert result.status == "DRY_RUN"
+    assert fake_client.deleted_tables == []

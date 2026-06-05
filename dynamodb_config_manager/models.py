@@ -8,7 +8,7 @@ from pydantic import BaseModel, ConfigDict, Field
 
 Environment = str
 Scope = Literal["all", "file", "folder", "changed"]
-Status = Literal["SUCCESS", "FAILED", "DRY_RUN"]
+Status = Literal["SUCCESS", "FAILED", "DRY_RUN", "DELETED"]
 
 
 class ConfigManagerError(Exception):
@@ -64,6 +64,7 @@ class FileDeploymentResult(ConfigBaseModel):
     rows_inserted: int = 0
     rows_updated: int = 0
     rows_failed: int = 0
+    table_deleted: bool = False
     status: Status = "SUCCESS"
     error_detail: str | None = None
     table_existed: bool | None = None

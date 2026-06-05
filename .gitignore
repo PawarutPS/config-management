@@ -21,3 +21,13 @@ dist/
 # Testing
 .pytest_cache/
 .coverage
+# Local secrets and credentials
+.env
+.env.*
+*.pem
+*.key
+*.p12
+*.pfx
+.aws/
+aws_config.toml
+.env_config.toml

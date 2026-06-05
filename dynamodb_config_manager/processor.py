@@ -44,9 +44,15 @@ class ConfigProcessor:
         billing_mode: str = "PAY_PER_REQUEST",
         backup_s3_bucket: str | None = None,
         backup_s3_prefix: str = "",
+        delete_removed_tables: bool = False,
+        confirm_delete_tables: bool = False,
     ) -> DeploymentSummary:
         if clear_table and not confirm_clear:
             raise ValidationError("confirm_clear=true is required when clear_table=true")
+        if delete_removed_tables and not confirm_delete_tables:
+            raise ValidationError(
+                "confirm_delete_tables=true is required when delete_removed_tables=true"
+            )
 
         files = self.resolve_files(scope, path, changed_base, changed_head)
         validated_files = [
@@ -65,6 +71,14 @@ class ConfigProcessor:
             )
             for config_file in validated_files
         ]
+
+        if scope == "changed" and delete_removed_tables:
+            deleted_files = self._deleted_csv_files(changed_base, changed_head)
+            results.extend(
+                self._delete_removed_table(env, deleted_file, dry_run)
+                for deleted_file in deleted_files
+            )
+
         return DeploymentSummary(env=env, results=results)
 
     def resolve_files(
@@ -121,24 +135,108 @@ class ConfigProcessor:
             raise ValidationError(f"file must be inside repository: {filepath}") from exc
 
     def _changed_csv_files(self, changed_base: str | None, changed_head: str) -> list[Path]:
-        command = ["git", "diff", "--name-only", "--diff-filter=ACMRT"]
-        if changed_base:
-            command.extend([changed_base, changed_head])
-        else:
-            command.extend([f"{changed_head}~1", changed_head])
+        normalized_head = self._normalize_git_ref(changed_head)
+        normalized_base = self._normalize_git_ref(changed_base) if changed_base else None
 
-        completed = subprocess.run(
-            command,
-            cwd=self.repo_root,
-            check=True,
-            capture_output=True,
-            text=True,
-        )
+        command = ["git", "diff", "--name-only", "--diff-filter=ACMRT"]
+        if normalized_base:
+            command.extend([normalized_base, normalized_head])
+        else:
+            command.extend([f"{normalized_head}~1", normalized_head])
+
+        try:
+            completed = subprocess.run(
+                command,
+                cwd=self.repo_root,
+                check=True,
+                capture_output=True,
+                text=True,
+            )
+        except subprocess.CalledProcessError as exc:
+            error_detail = exc.stderr.strip() or str(exc)
+            raise ValidationError(f"git diff failed: {error_detail}") from exc
+
         return [
             Path(line)
             for line in completed.stdout.splitlines()
             if line.startswith("config/") and line.endswith(".csv")
         ]
+
+    def _deleted_csv_files(self, changed_base: str | None, changed_head: str) -> list[Path]:
+        normalized_head = self._normalize_git_ref(changed_head)
+        normalized_base = self._normalize_git_ref(changed_base) if changed_base else None
+
+        command = ["git", "diff", "--name-only", "--diff-filter=D"]
+        if normalized_base:
+            command.extend([normalized_base, normalized_head])
+        else:
+            command.extend([f"{normalized_head}~1", normalized_head])
+
+        try:
+            completed = subprocess.run(
+                command,
+                cwd=self.repo_root,
+                check=True,
+                capture_output=True,
+                text=True,
+            )
+        except subprocess.CalledProcessError as exc:
+            error_detail = exc.stderr.strip() or str(exc)
+            raise ValidationError(f"git diff failed: {error_detail}") from exc
+
+        return [
+            Path(line)
+            for line in completed.stdout.splitlines()
+            if line.startswith("config/") and line.endswith(".csv")
+        ]
+
+    def _normalize_git_ref(self, value: str) -> str:
+        return value.strip().strip("'\"")
+
+    def _delete_removed_table(
+        self, env: Environment, filepath: Path, dry_run: bool
+    ) -> FileDeploymentResult:
+        relative_path = self._relative_path_for_deleted(filepath)
+        table_name = self._table_name_for_deleted(relative_path)
+        result = FileDeploymentResult(
+            env=env,
+            filepath=relative_path.as_posix(),
+            file_name=relative_path.name,
+            table_name=table_name,
+            partition_key="",
+            sort_key=None,
+            column_list=[],
+            record_count=0,
+        )
+
+        try:
+            result.table_existed = self.dynamodb_client.table_exists(table_name)
+            if dry_run:
+                result.status = "DRY_RUN"
+                self._log_result(result)
+                return result
+            if result.table_existed:
+                self.dynamodb_client.delete_table(table_name)
+                result.table_deleted = True
+            result.status = "DELETED"
+        except Exception as exc:  # noqa: BLE001 - log and continue summary for all files
+            result.status = "FAILED"
+            result.error_detail = str(exc)
+
+        self._log_result(result)
+        return result
+
+    def _relative_path_for_deleted(self, filepath: Path) -> Path:
+        if filepath.is_absolute():
+            try:
+                return filepath.relative_to(self.repo_root)
+            except ValueError as exc:
+                raise ValidationError(f"file must be inside repository: {filepath}") from exc
+        return filepath
+
+    def _table_name_for_deleted(self, relative_path: Path) -> str:
+        mapped_name = self.table_map.get(relative_path.as_posix())
+        return mapped_name or relative_path.stem
 
     def _deploy_file(
         self,
@@ -200,7 +298,7 @@ class ConfigProcessor:
         LOGGER.info(
             "ENV=%s FILEPATH=%s FILE_NAME=%s TABLE_NAME=%s PARTITION_KEY=%s "
             "SORT_KEY=%s COLUMN_LIST=%s RECORD_COUNT=%s ROWS_INSERTED=%s "
-            "ROWS_UPDATED=%s ROWS_FAILED=%s STATUS=%s ERROR_DETAIL=%s BACKUP_S3_URI=%s",
+            "ROWS_UPDATED=%s ROWS_FAILED=%s STATUS=%s ERROR_DETAIL=%s BACKUP_S3_URI=%s TABLE_DELETED=%s",
             result.env,
             result.filepath,
             result.file_name,
@@ -215,6 +313,7 @@ class ConfigProcessor:
             result.status,
             result.error_detail,
             result.backup_s3_uri,
+            result.table_deleted,
         )
 
     def _backup_s3_key(self, relative_path: Path, prefix: str) -> str:

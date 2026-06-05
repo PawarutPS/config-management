@@ -2,7 +2,7 @@
 
 Python repository for managing DynamoDB config data from CSV files with Git as the source of truth.
 
-The command-line interface is implemented with Typer. The main command is `dynamodb-config-manager deploy`, and Typer validates input types from the function signature.
+The command-line interface is implemented with Typer. Jenkins runs it with `python3 dynamodb_config_manager/cli.py`, and Typer validates input types from the function signature.
 
 Jenkins jobs are separated by environment, so the CLI does not require `--env`. AWS credentials should come from Jenkins AK/SK credentials or standard AWS environment variables.
 
@@ -96,7 +96,7 @@ Jenkins should run changed-file deployment after merge.
 Dry run validation:
 
 ```bash
-dynamodb-config-manager deploy \
+python3 dynamodb_config_manager/cli.py \
   --scope changed \
   --changed-base origin/main \
   --changed-head HEAD
@@ -105,11 +105,13 @@ dynamodb-config-manager deploy \
 Actual deploy with S3 backup:
 
 ```bash
-dynamodb-config-manager deploy \
+python3 dynamodb_config_manager/cli.py \
   --scope changed \
   --changed-base origin/main \
   --changed-head HEAD \
   --no-dry-run \
+  --clear-table \
+  --confirm-clear \
   --backup-s3-bucket my-config-backup-bucket \
   --backup-s3-prefix dynamodb-config-backup
 ```
@@ -120,12 +122,28 @@ Deploy mode creates a missing table using string keys from `pk__` and optional `
 
 A Jenkins pipeline example is available at `Jenkinsfile`. It generates the CLI command, prints it for audit, then executes it.
 
+## Deleted CSV Files
+
+By default, deleting a CSV file does not delete the DynamoDB table. To make a deleted CSV remove the matching table, enable both safety flags:
+
+```bash
+python3 dynamodb_config_manager/cli.py \
+  --scope changed \
+  --changed-base HEAD~1 \
+  --changed-head HEAD \
+  --no-dry-run \
+  --delete-removed-tables \
+  --confirm-delete-tables
+```
+
+When enabled, the table name is resolved from the deleted CSV file stem. For example, deleting `config/cde/cat_table.csv` deletes DynamoDB table `cat_table` if it exists.
+
 ## Optional Clear Table
 
 Clearing a table is disabled by default. If a pipeline needs to clear existing data before upsert, both flags are required:
 
 ```bash
-dynamodb-config-manager deploy \
+python3 dynamodb_config_manager/cli.py \
   --scope changed \
   --changed-base origin/main \
   --changed-head HEAD \
@@ -142,13 +160,13 @@ Manual commands are still available for local validation or troubleshooting.
 
 ```bash
 # Validate and preview one file
-dynamodb-config-manager deploy --scope file --path config/cde/dpf_config_sample.csv
+python3 dynamodb_config_manager/cli.py --scope file --path config/cde/dpf_config_sample.csv
 
 # Validate and preview all CSV files
-dynamodb-config-manager deploy --scope all
+python3 dynamodb_config_manager/cli.py --scope all
 
 # Validate and preview one folder
-dynamodb-config-manager deploy --scope folder --path config/cde
+python3 dynamodb_config_manager/cli.py --scope folder --path config/cde
 ```
 
 ## Logging

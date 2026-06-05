@@ -68,6 +68,11 @@ class DynamoDBConfigClient:
         )
         table.wait_until_exists()
 
+    def delete_table(self, table_name: str) -> None:
+        table = self.resource.Table(table_name)
+        table.delete()
+        table.wait_until_not_exists()
+
     def clear_table(self, table_name: str, key_schema: KeySchema) -> int:
         table = self.resource.Table(table_name)
         projection_names = {"#pk": key_schema.partition_key}

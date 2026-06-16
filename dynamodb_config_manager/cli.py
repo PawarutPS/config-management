@@ -129,6 +129,10 @@ def _run_deploy(
 
 def print_summary(summary: DeploymentSummary) -> None:
     files = [result.filepath for result in summary.results]
+    files_count = len(files)
+    file_row_counts = [
+        (result.filepath, result.record_count) for result in summary.results
+    ]
     tables = [result.table_name for result in summary.results]
     rows_read = sum(result.record_count for result in summary.results)
     rows_upserted = sum(result.rows_upserted for result in summary.results)
@@ -141,6 +145,11 @@ def print_summary(summary: DeploymentSummary) -> None:
     print("Files Processed")
     for filepath in files:
         print(f"- {filepath}")
+    print("Files Count")
+    print(f"- {files_count}")
+    print("File Row Counts")
+    for filepath, record_count in file_row_counts:
+        print(f"- {filepath}: {record_count}")
     print("Table")
     for table in tables:
         print(f"- {table}")
